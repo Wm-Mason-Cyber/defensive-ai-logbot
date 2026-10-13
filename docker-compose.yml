@@ -1,0 +1,59 @@
+# Defensive AI & Automated Incident Response — lab environment
+#
+# Three containers on one isolated bridge network:
+#   web       the target: nginx serving a site + a protected /admin/ console,
+#             writing JSON access logs to ./logs and enforcing ./firewall rules.
+#   visitors  simulated normal employees/visitors (the "200 OK" background noise).
+#   attacker  simulated credential-guessing bot hammering /admin/ (the threat).
+#
+# The SOC broker is NOT a container — students run broker/soc_broker.py on the
+# host (WSL) so it can use the GPU-backed Ollama model running there. It reads
+# ./logs and writes ./firewall + ./alerts, all bind-mounted here.
+
+services:
+  web:
+    image: nginx:1.27-alpine
+    container_name: lab-web
+    ports:
+      - "8080:80"            # browse the site at http://localhost:8080
+    volumes:
+      - ./web/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./web/htpasswd:/etc/nginx/htpasswd:ro
+      - ./web/html:/usr/share/nginx/html:ro
+      - ./web/firewall-watch.sh:/docker-entrypoint.d/99-firewall-watch.sh:ro
+      - ./logs:/var/log/lab
+      - ./firewall:/etc/nginx/blocklist      # broker writes rules here
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks: [lab_net]
+
+  visitors:
+    image: python:3.12-alpine
+    container_name: lab-visitors
+    depends_on:
+      web:
+        condition: service_healthy
+    volumes:
+      - ./traffic/legit_users.py:/app/legit_users.py:ro
+    command: ["python", "/app/legit_users.py"]
+    restart: unless-stopped
+    networks: [lab_net]
+
+  attacker:
+    image: python:3.12-alpine
+    container_name: lab-attacker
+    depends_on:
+      web:
+        condition: service_healthy
+    volumes:
+      - ./traffic/attacker.py:/app/attacker.py:ro
+    command: ["python", "/app/attacker.py"]
+    restart: unless-stopped
+    networks: [lab_net]
+
+networks:
+  lab_net:
+    driver: bridge

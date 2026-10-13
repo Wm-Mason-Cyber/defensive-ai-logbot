@@ -1,0 +1,5 @@
+body { font-family: system-ui, sans-serif; max-width: 46rem; margin: 2rem auto; padding: 0 1rem; color: #1d2330; background: #f7f8fa; }
+header { border-bottom: 2px solid #2b5fd9; margin-bottom: 1.5rem; }
+header a { margin-right: 1rem; color: #2b5fd9; text-decoration: none; }
+.notice { background: #fff4d6; border-left: 4px solid #d9a400; padding: .75rem 1rem; }
+.danger { background: #fde4e4; border-left: 4px solid #c62828; padding: .75rem 1rem; }

@@ -1,0 +1,4 @@
+# blocklist.conf — firewall rules written by the SOC broker.
+# Each line is an nginx `deny <ip>;` directive. The web container's
+# firewall-watch loop validates and hot-reloads nginx when this file changes.
+# Starts empty: no one is blocked until the broker decides to act.
