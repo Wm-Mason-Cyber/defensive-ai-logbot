@@ -63,6 +63,7 @@ firewall/                 blocklist the broker writes; nginx enforces it
 logs/  alerts/            runtime output (JSON access log; incident records)
 scripts/                  preflight / run / stop / reset + check_progress helpers
 docs/STUDENT_GUIDE.md     student-facing lab instructions + questions
+docs/STUDENT_NOTES.md     student reference: folder map, log fields, command cheat sheet
 docs/TEACHER_GUIDE.md     setup, grading, troubleshooting, answer key
 ```
 

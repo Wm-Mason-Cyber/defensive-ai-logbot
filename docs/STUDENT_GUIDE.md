@@ -2,6 +2,10 @@
 
 **Time:** ~60 minutes · **Submit:** one screenshot + answers to 6 questions
 
+> **Keep the Lab Notes handy** (`docs/STUDENT_NOTES.md`, or the Notes tab in the
+> class Doc). It has a map of the folder, what each log field means, and a
+> cheat sheet of every command below (`cd`, `ls`, `tail -f`, etc.).
+
 ---
 
 ## The scenario
@@ -63,6 +67,13 @@ This starts three containers:
 - **visitors** — simulated normal employees and visitors browsing the site and
   logging in correctly. This is the harmless background noise.
 - **attacker** — a bot repeatedly guessing admin passwords. This is the threat.
+
+> **Important — there is no real hacker here.** The "attacker" is a script
+> (`traffic/attacker.py`) running in a container that *you* just started. It
+> fakes a password-guessing attack so you have something to defend against. It
+> will **keep attacking until you shut it down**, so don't forget Part 4's
+> `./scripts/stop_lab.sh` when you finish. Same goes for the "visitors" — also
+> a script, playing the role of normal users.
 
 Peek at the raw log the web server is writing (one JSON object per request):
 
@@ -153,11 +164,22 @@ python3 scripts/check_progress.py
 > happen? Explain how the tiered design in this lab avoids that problem, and
 > name one real tool a company might use for the "sieve" tier.
 
-When done:
+### ⚠️ When you're done — SHUT THE LAB DOWN
+
+The attacker and visitor scripts keep running in the background until you stop
+them. Always shut the lab down when you finish so nothing is left hammering the
+web server after class:
 
 ```bash
-./scripts/stop_lab.sh      # stop the containers
-# (press Ctrl-C in the broker terminal first)
+# 1. In your broker terminal, press Ctrl-C to stop the Defensive AI.
+# 2. Then stop all the containers (this stops the attacker too):
+./scripts/stop_lab.sh
+```
+
+Double-check nothing is still running:
+
+```bash
+docker ps        # you should NOT see lab-web, lab-visitors, or lab-attacker
 ```
 
 ---
