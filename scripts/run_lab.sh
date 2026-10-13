@@ -23,4 +23,6 @@ echo "Now, in THIS terminal, start the defensive AI broker:"
 echo "    python3 broker/soc_broker.py"
 echo
 echo "Watch it detect the attack and block the attacker's IP."
-echo "Stop everything when done with:  ./scripts/stop_lab.sh"
+echo
+echo "Stuck or not sure a step worked?  python3 scripts/check_progress.py"
+echo "Stop everything when done with:   ./scripts/stop_lab.sh"

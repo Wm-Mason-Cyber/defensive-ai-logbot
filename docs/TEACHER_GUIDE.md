@@ -116,6 +116,16 @@ The broker has useful flags for live demos — `python3 broker/soc_broker.py --h
 
 ---
 
+## Student self-check (cuts down "it's not working" questions)
+
+Students can run `python3 scripts/check_progress.py` at any time. It's
+read-only and walks the 7 run milestones (containers up → logging → normal
+traffic → attack → AI flagged → rule written → attacker blocked), marking the
+step they're on with the exact next command. It only checks that they *ran* the
+lab correctly — it does not see or grade their written answers. Point stuck
+students here first; most "nothing is happening" cases are just the ~30 s first
+AI inference, which the checker tells them to wait for.
+
 ## Grading
 
 The deliverable is a **screenshot + six short answers** (see

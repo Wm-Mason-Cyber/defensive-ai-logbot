@@ -27,12 +27,25 @@ this way.** The advanced section lets you modify it.
 Open your WSL terminal and move into the lab folder:
 
 ```bash
-cd ~/defensive-ai-logbot      # wherever you cloned it
+# incase you need an update or git
+sudo apt update && sudo apt upgrade -y && sudo apt install git -y
+
+# download the lab and run automated setup
+git clone https://github.com/Wm-Mason-Cyber/defensive-ai-logbot ~/defensive-ai-logbot
+cd ~/defensive-ai-logbot
 ./scripts/preflight.sh
 ```
 
 Every line should show a green ✓. If something fails, follow the `→` hint or
 ask your teacher. **Do not continue until preflight passes.**
+
+> **Stuck at any point in this lab?** Run the progress checker:
+> ```bash
+> python3 scripts/check_progress.py
+> ```
+> It's read-only and safe to run as often as you like. It shows which steps
+> you've completed, marks the one you're on (`▶ ← you are here`), and gives you
+> the exact command to try next. Use it whenever you're not sure a step worked.
 
 ---
 
@@ -123,6 +136,12 @@ grep '"status":403' logs/access.json | tail -3
 ---
 
 ## Part 4 — Submit
+
+First, confirm you finished every step — this should show all 7 green:
+
+```bash
+python3 scripts/check_progress.py
+```
 
 1. **Screenshot:** your broker terminal showing the `[STATUS] ALERT` verdict and
    the `*** [AUTOMATED RESPONSE] blocked ... ***` banner. Make sure the attacker

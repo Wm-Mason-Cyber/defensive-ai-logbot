@@ -11,7 +11,7 @@ no internet needed after setup.
 
 ```
   ┌────────────┐  failed logins   ┌──────────────┐   JSON log   ┌──────────────┐
-  │  attacker  │ ───────────────▶ │   web (nginx)│ ───────────▶ │  SOC broker  │
+  │  attacker  │ ──────────────▶ │   web (nginx)│ ───────────▶ │  SOC broker  │
   │ (container)│    (HTTP 401)    │  /admin/     │   (tail)     │  (host + AI) │
   └────────────┘                  └──────────────┘              └──────┬───────┘
          ▲                               ▲                             │
@@ -28,6 +28,9 @@ no internet needed after setup.
 4. Watch the broker filter the log firehose, ask the AI about the suspicious
    burst, and write a firewall rule. Confirm the attacker starts getting `403`.
 5. Screenshot the block + answer the review questions (see `docs/STUDENT_GUIDE.md`).
+
+Stuck at any point? `python3 scripts/check_progress.py` is a read-only checker
+that shows which of the 7 run steps are done and spells out the next command.
 
 ## The idea the lab teaches
 
@@ -58,7 +61,7 @@ traffic/                  simulated actors
 broker/soc_broker.py      the Defensive AI SOC broker (students run this)
 firewall/                 blocklist the broker writes; nginx enforces it
 logs/  alerts/            runtime output (JSON access log; incident records)
-scripts/                  preflight / run / stop / reset helpers
+scripts/                  preflight / run / stop / reset + check_progress helpers
 docs/STUDENT_GUIDE.md     student-facing lab instructions + questions
 docs/TEACHER_GUIDE.md     setup, grading, troubleshooting, answer key
 ```
