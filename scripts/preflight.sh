@@ -47,7 +47,7 @@ if command -v python3 >/dev/null 2>&1; then
     if python3 -c "import ollama" 2>/dev/null; then
         pass "python 'ollama' package installed"
     else
-        fail "python 'ollama' package missing" "Run: pip install ollama  (add --break-system-packages if pip refuses)"
+        fail "python 'ollama' package missing" "Run: sudo apt install python3-ollama # to globally install the python ollama module"
     fi
 else
     fail "python3 not installed" "Install python3 in your WSL distro: sudo apt install python3 python3-pip"
