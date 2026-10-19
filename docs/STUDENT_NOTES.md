@@ -9,27 +9,31 @@ it.
 
 ## The big picture: two terminals, three containers, one AI
 
-This lab has moving parts in a few places. Here's the whole thing on one page:
+This lab has moving parts in a few places. You turn them on **one step at a
+time**. Here's the whole thing on one page:
 
 ```
   YOUR WSL TERMINALS                        DOCKER (the fake "company network")
   ───────────────────                       ───────────────────────────────────
-  Terminal 1:  ./scripts/run_lab.sh   ─────▶  ┌─ web       (the website + /admin/)
-               (starts the containers)        ├─ visitors  (fake normal users)
-                                              └─ attacker  (fake password-guesser)
+  Step 1: ./scripts/start_website.sh  ───▶  ┌─ web       (the website + /admin/)
+  Step 3: ./scripts/start_visitors.sh ───▶  ├─ visitors  (fake normal users)
+  Step 4: ./scripts/start_attacker.sh ───▶  └─ attacker  (fake password-guesser)
                                                       │
-                                                      │ every request is written to
+          Step 2: you, in a browser ──▶ web           │ every request is written to
                                                       ▼
                                                  logs/access.json
                                                       │
-  Terminal 2:  python3 broker/soc_broker.py ◀────────┘  (reads the log)
-               (the Defensive AI — the part        │
-                YOU are operating)                 ▼
-                                             firewall/blocklist.conf  → web blocks the attacker
+  Step 7: python3 broker/batch_logs.py  ◀────────────┤  (cuts the log into batches/)
+  Step 8: python3 broker/soc_broker.py  ◀────────────┘  (batches + asks the AI)
+                    │
+                    ▼
+  firewall/blocklist.conf  → web blocks the attacker
+  (in Step 5, YOU write this file by hand)
 ```
 
-**You typically have TWO terminal tabs open at once:** one that started the lab,
-and one running the AI broker. That's normal and expected.
+**You typically have TWO terminal tabs open at once:** one to run commands, and
+one watching the log with `tail -f` (or, in Step 8, running the AI broker).
+That's normal and expected.
 
 > ### ⚠️ The "attacker" is a script you started — remember to stop it
 > There is no real hacker. The `attacker` container runs `traffic/attacker.py`,
@@ -50,12 +54,16 @@ defensive-ai-logbot/
 ├── docker-compose.yml     ← defines the 3 containers (you don't edit this)
 ├── scripts/               ← the helper commands you run
 │   ├── preflight.sh          check your machine is ready
-│   ├── run_lab.sh            START the lab (web + visitors + attacker)
+│   ├── start_website.sh      Step 1: start the website only
+│   ├── start_visitors.sh     Step 3: add the normal-traffic script
+│   ├── start_attacker.sh     Step 4: add the attacker script
+│   ├── run_lab.sh            shortcut: Steps 1+3+4 all at once
 │   ├── check_progress.py     "where am I / what's next?"  (run anytime)
 │   ├── stop_lab.sh           STOP the lab  ← don't forget this!
-│   └── reset_lab.sh          wipe logs/alerts to start fresh
+│   └── reset_lab.sh          wipe logs/alerts/batches to start fresh
 ├── broker/
-│   └── soc_broker.py      ← the Defensive AI you run (Terminal 2)
+│   ├── batch_logs.py      ← Step 7: cuts the log into 3 batch files (no AI)
+│   └── soc_broker.py      ← Step 8: the Defensive AI
 ├── traffic/
 │   ├── legit_users.py        the "normal visitors" script
 │   └── attacker.py           the "attacker" script  ← this is the fake threat
@@ -63,8 +71,9 @@ defensive-ai-logbot/
 ├── logs/                  ← ★ WHERE THE ACTION IS LOGGED ★
 │   ├── access.json           every web request, one JSON line each
 │   └── error.log             web server errors
+├── batches/               ← batch_1/2/3.jsonl, written by batch_logs.py
 ├── firewall/
-│   └── blocklist.conf        the block rules the AI writes
+│   └── blocklist.conf        block rules (you write one in Step 5; the AI in Step 8)
 ├── alerts/                ← incident files the AI writes when it blocks someone
 └── docs/                  ← the guides (including this one)
 ```
@@ -74,7 +83,8 @@ defensive-ai-logbot/
 | You want to see… | Look here |
 |------------------|-----------|
 | Every request hitting the website (the live action) | `logs/access.json` |
-| Who the AI decided to block | `firewall/blocklist.conf` |
+| Who is blocked (by you or the AI) | `firewall/blocklist.conf` |
+| The log cut into small pieces | `batches/batch_*.jsonl` |
 | The AI's incident reports | `alerts/incident_*.json` |
 
 ---
@@ -93,14 +103,22 @@ What the fields mean:
 
 | Field | Meaning | What to notice |
 |-------|---------|----------------|
-| `src_ip` | who made the request | the attacker is always the **same** IP |
+| `src_ip` | who made the request | the attacker is always the **same** IP; *you* show up as the gateway, usually ending in `.1` |
 | `uri` | what they asked for | `/admin/` = the protected login |
 | `status` | how the server answered | **200** = OK · **401** = login failed · **403** = BLOCKED |
-| `user` | the username they tried | the attacker cycles through `root`, `admin`, … |
-| `ua` | the "user agent" (browser/tool) | the attacker's is `Python-urllib` — a dead giveaway it's a script |
+| `user` | the username they tried | the attacker cycles through `root`, `admin`, …; yours is `student` |
+| `ua` | the "user agent" (browser/tool) | the scripts' is `Python-urllib`, yours is your browser (or `curl`) |
 
 The whole lab is really just the story of those `status` numbers: lots of
-`401`s from one IP → the AI notices → that IP starts getting `403`.
+`401`s from one IP → someone notices (you in Step 4, the AI in Step 8) → that
+IP starts getting `403`.
+
+### Logins for the admin console
+
+| Username | Password | Who |
+|----------|----------|-----|
+| `student` | `Defend2026!` | **you** (Step 2) |
+| `alice`, `bob`, `intern` | (secret) | the fake staff the visitor script logs in as |
 
 ---
 
@@ -131,6 +149,8 @@ You only need a handful of commands. `cd` into the lab folder first
 | *(press `Ctrl-C`)* | stop following and get your prompt back |
 | `grep '"status":401' logs/access.json` | show only the failed-login lines |
 | `grep '"status":403' logs/access.json` | show only the blocked lines |
+| `wc -l logs/access.json` | count the lines (requests) in the log |
+| `grep '"status":401' logs/access.json \| grep -v student \| cut -c8-26 \| uniq -c` | failed logins per second: shows the attack bursts |
 
 > `tail -f` is "live mode" — it keeps running and printing until you press
 > `Ctrl-C`. That's not an error; it's waiting for the next log line.
@@ -143,11 +163,17 @@ You only need a handful of commands. `cd` into the lab folder first
 | Command | What it does |
 |---------|--------------|
 | `./scripts/preflight.sh` | check the machine is ready (run first) |
-| `./scripts/run_lab.sh` | start the lab |
-| `python3 broker/soc_broker.py` | run the Defensive AI (Terminal 2) |
+| `./scripts/start_website.sh` | Step 1: start the website (also wipes old logs) |
+| `./scripts/start_visitors.sh` | Step 3: add normal traffic |
+| `./scripts/start_attacker.sh` | Step 4: add the attacker |
+| `echo 'deny <ip>;' >> firewall/blocklist.conf` | Step 5: block an IP by hand |
+| `nano firewall/blocklist.conf` | Step 5: delete your rule (`Ctrl-O` `Enter` saves, `Ctrl-X` exits) |
+| `python3 broker/batch_logs.py` | Step 7: cut the log into 3 batch files |
+| `python3 broker/soc_broker.py` | Step 8: run the Defensive AI |
+| `./scripts/run_lab.sh` | shortcut: start all 3 containers at once |
 | `python3 scripts/check_progress.py` | see which steps are done + what's next |
 | `./scripts/stop_lab.sh` | **stop the lab (and the attacker!)** |
-| `./scripts/reset_lab.sh` | clear logs/alerts to start over |
+| `./scripts/reset_lab.sh` | clear logs/alerts/batches to start over |
 
 ### Peeking at the containers (optional, for the curious)
 
@@ -178,8 +204,13 @@ You only need a handful of commands. `cd` into the lab folder first
   it's fast.
 - **`tail -f` won't give my prompt back.** That's normal — it's live. Press
   `Ctrl-C`.
-- **`./scripts/...` says permission denied.** Run it as `bash scripts/run_lab.sh`
-  instead.
+- **`./scripts/...` says permission denied.** Run it with `bash` in front, e.g.
+  `bash scripts/start_website.sh`.
+- **The browser won't ask for the admin password again.** It remembered your
+  login. Use a private/incognito window and close it to "log out," or use the
+  `curl` commands in Step 2.
+- **I blocked myself (the `.1` IP) by accident.** `nano firewall/blocklist.conf`,
+  delete that line, save. The site comes back within a second.
 - **I'm lost / not sure what's done.** Run `python3 scripts/check_progress.py`.
 - **I want a clean slate.** `./scripts/stop_lab.sh` then `./scripts/reset_lab.sh`.
 - **Is the attacker still running?** `docker ps` — if you see `lab-attacker`,

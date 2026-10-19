@@ -22,15 +22,28 @@ no internet needed after setup.
 
 ## What a student does
 
-1. `./scripts/preflight.sh` — confirm Docker, Ollama, and the model are ready.
-2. `./scripts/run_lab.sh` — start the target site, normal visitors, and the attacker.
-3. `python3 broker/soc_broker.py` — run the defensive AI in a second terminal.
-4. Watch the broker filter the log firehose, ask the AI about the suspicious
-   burst, and write a firewall rule. Confirm the attacker starts getting `403`.
-5. Screenshot the block + answer the review questions (see `docs/STUDENT_GUIDE.md`).
+The lab is built up one piece at a time, so students do each job **by hand**
+before the AI automates it:
 
-Stuck at any point? `python3 scripts/check_progress.py` is a read-only checker
-that shows which of the 7 run steps are done and spells out the next command.
+1. `./scripts/start_website.sh` — start just the website and explore it.
+2. Find their own traffic in `logs/access.json`: `200` pages, a failed `401`
+   login, and a successful `200` login as `student` / `Defend2026!`.
+3. `./scripts/start_visitors.sh` — add scripted "regular traffic" and watch the
+   log grow.
+4. `./scripts/start_attacker.sh` — add the scripted attacker and find its
+   `401` bursts.
+5. Block the attacker **by hand** with a `deny` rule, watch `401` → `403`, then
+   remove the rule.
+6. Reflect: the log grows fast, and an AI's context window is small. Read the
+   heart of the batching loop.
+7. `python3 broker/batch_logs.py` — cut the live log into 3 batch files and
+   see what the sieve keeps.
+8. `python3 broker/soc_broker.py` — the Defensive AI does Steps 4–7 on its own
+   and firewalls the attacker. Big-picture reflection on AI in the SOC.
+
+Full instructions and questions: `docs/STUDENT_GUIDE.md`. Stuck at any point?
+`python3 scripts/check_progress.py` is a read-only checker that shows which
+steps are done and spells out the next command.
 
 ## The idea the lab teaches
 
@@ -58,10 +71,12 @@ web/                      nginx target: site, /admin/ console, JSON logs, firewa
   nginx.conf  htpasswd  html/  firewall-watch.sh
 traffic/                  simulated actors
   legit_users.py  attacker.py
-broker/soc_broker.py      the Defensive AI SOC broker (students run this)
+broker/soc_broker.py      the Defensive AI SOC broker (Step 8)
+broker/batch_logs.py      the broker's batching loop without the AI (Step 7)
 firewall/                 blocklist the broker writes; nginx enforces it
-logs/  alerts/            runtime output (JSON access log; incident records)
-scripts/                  preflight / run / stop / reset + check_progress helpers
+logs/  alerts/  batches/  runtime output (JSON access log; incident records; batch files)
+scripts/                  preflight, start_website/visitors/attacker, run_lab (all at once),
+                          stop / reset, check_progress
 docs/STUDENT_GUIDE.md     student-facing lab instructions + questions
 docs/STUDENT_NOTES.md     student reference: folder map, log fields, command cheat sheet
 docs/TEACHER_GUIDE.md     setup, grading, troubleshooting, answer key
