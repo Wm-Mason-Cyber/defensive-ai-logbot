@@ -12,8 +12,9 @@ done yet, with an exact command to try. When every step is green, it tells you
 exactly what your submission screenshot should show.
 
 This checks that you RAN the lab correctly. It does not grade your written
-answers to Q1-Q6 — those are yours to answer.
+answers — those are yours to answer.
 """
+import collections
 import glob
 import json
 import os
@@ -24,6 +25,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG = os.path.join(ROOT, "logs", "access.json")
 BLOCKLIST = os.path.join(ROOT, "firewall", "blocklist.conf")
 ALERTS = os.path.join(ROOT, "alerts")
+BATCHES = os.path.join(ROOT, "batches")
 
 # ── tiny color helpers (degrade to plain text if not a terminal) ─────────────
 _TTY = sys.stdout.isatty()
@@ -91,110 +93,158 @@ def incident_files():
 # ── the ordered checklist ────────────────────────────────────────────────────
 # Each step is (title, check) where check() returns (done: bool, detail: str,
 # hint: str). detail prints on success; hint prints when it's your next step.
+#
+# The visitor and attacker scripts both send the User-Agent "Python-urllib".
+# Anything else (a browser, curl) is YOU — that's how Step 2 finds your traffic.
 
-def step_containers():
-    ps = docker_ps()
-    if ps is None:
-        return (False,
-                "",
-                "Docker isn't responding. Start Docker Desktop (enable WSL\n"
-                "       integration), then run:  ./scripts/preflight.sh")
-    wanted = ["lab-web", "lab-visitors", "lab-attacker"]
-    up = {n: s for n, s in ps.items() if n in wanted and s.startswith("Up")}
-    if len(up) == 3:
-        health = "healthy" if any("healthy" in s for s in up.values()) else "running"
-        return (True, f"all 3 containers running (web is {health})", "")
-    missing = [n for n in wanted if n not in up]
-    return (False, "",
-            f"These containers aren't up yet: {', '.join(missing)}\n"
-            "       Start the lab with:  ./scripts/run_lab.sh")
+SCRIPT_UA = "Python-urllib"
+STAFF = {"alice", "bob", "intern"}
 
 
-def step_log(events):
-    if events:
-        return (True, f"web server is logging ({len(events)} requests recorded)", "")
-    return (False, "",
-            "No requests logged yet in logs/access.json.\n"
-            "       Give it a few seconds after run_lab.sh, then browse\n"
-            "       http://localhost:8080 yourself to generate traffic.")
+def is_mine(e):
+    return not e.get("ua", "").startswith(SCRIPT_UA)
 
 
-def step_normal(events):
-    n = sum(1 for e in events if e.get("status") == 200)
-    if n:
-        return (True, f"normal visitor traffic is flowing ({n} x 200 OK)", "")
-    return (False, "",
-            "No normal (200) traffic seen yet. The 'visitors' container\n"
-            "       should be producing it — check:  docker ps")
+def is_admin(e):
+    return e.get("uri", "").startswith("/admin")
 
 
-def step_attack(events):
-    attackers = {}
-    for e in events:
-        if e.get("status") == 401:
-            attackers[e.get("src_ip", "?")] = attackers.get(e.get("src_ip", "?"), 0) + 1
-    if attackers:
-        ip, n = max(attackers.items(), key=lambda kv: kv[1])
-        return (True, f"attack detected in the log ({n} failed logins from {ip})", "")
-    return (False, "",
-            "No failed logins (401) yet. The attacker bursts periodically —\n"
-            "       wait ~15s and re-run this check. Watch live with:\n"
-            "       tail -f logs/access.json")
+def container_up(ps, name):
+    return bool(ps) and ps.get(name, "").startswith("Up")
 
 
-def step_broker():
-    incs = incident_files()
-    if incs:
+def first_incident_ts():
+    """ISO timestamp of the broker's first incident, or None."""
+    for path in incident_files():
         try:
-            data = json.load(open(incs[-1]))
-            return (True,
-                    f"broker raised an incident for {data.get('blocked_ip','?')} "
-                    f"({len(incs)} total)", "")
+            return json.load(open(path)).get("timestamp")
         except Exception:
-            return (True, f"broker raised {len(incs)} incident(s)", "")
-    return (False, "",
-            "The broker hasn't flagged anything yet. In a second terminal run:\n"
-            "       python3 broker/soc_broker.py\n"
-            "       The FIRST AI answer takes ~30s (the model is loading) — wait for it.")
+            continue
+    return None
 
 
-def step_firewall():
-    ips = deny_rules()
-    if ips:
-        return (True, f"firewall rule written: blocking {', '.join(ips)}", "")
-    return (False, "",
-            "No firewall rule written yet. This happens automatically once the\n"
-            "       broker's AI returns [STATUS] ALERT. Keep the broker running.")
-
-
-def step_enforced(events):
-    blocked_ips = set(deny_rules())
-    if not blocked_ips:
+def step_website(ps):
+    if ps is None:
         return (False, "",
-                "Nothing is blocked yet, so there's nothing to enforce. Finish\n"
-                "       the previous step first.")
-    n = sum(1 for e in events
-            if e.get("status") == 403 and e.get("src_ip") in blocked_ips)
-    if n:
-        return (True,
-                f"block is ENFORCED — attacker got {n} x 403 Forbidden", "")
+                "Docker isn't responding. Start Docker Desktop (enable WSL\n"
+                "integration), then run:  ./scripts/preflight.sh")
+    if container_up(ps, "lab-web"):
+        return (True, "website container is running", "")
     return (False, "",
-            "Rule is written but no 403s seen yet. nginx reloads within ~1s;\n"
-            "       the attacker also backs off when blocked. Re-run this check\n"
-            "       in a few seconds, or look at:  docker logs lab-web | grep firewall")
+            "Start the website with:  ./scripts/start_website.sh\n"
+            "Then browse http://localhost:8080")
+
+
+def step_my_traffic(events):
+    mine = [e for e in events if is_mine(e)]
+    page_200 = any(e.get("status") == 200 and not is_admin(e) for e in mine)
+    login_401 = any(e.get("status") == 401 and is_admin(e) for e in mine)
+    login_200 = any(e.get("status") == 200 and is_admin(e) for e in mine)
+    if page_200 and login_401 and login_200:
+        return (True, "found your 200 pages, a failed 401 login, and a 200 login", "")
+    todo = []
+    if not page_200:
+        todo.append("visit a few public pages (200)")
+    if not login_401:
+        todo.append("try /admin/ with a WRONG password (401)")
+    if not login_200:
+        todo.append("log in to /admin/ as student / Defend2026! (200)")
+    return (False, "",
+            "Still to do: " + "; ".join(todo) + ".\n"
+            "Watch them land with:  tail -f logs/access.json")
+
+
+def step_visitors(ps, events):
+    logins = sum(1 for e in events
+                 if e.get("status") == 200 and e.get("user") in STAFF)
+    if container_up(ps, "lab-visitors") and logins:
+        return (True, f"regular traffic flowing ({logins} staff logins so far)", "")
+    if container_up(ps, "lab-visitors"):
+        return (False, "",
+                "Visitors are running but no staff login yet — wait ~30s and re-check.")
+    return (False, "", "Start the regular traffic with:  ./scripts/start_visitors.sh")
+
+
+def step_attacker(ps, events):
+    counts = collections.Counter(e.get("src_ip", "?") for e in events
+                                 if e.get("status") == 401 and not is_mine(e))
+    if counts:
+        ip, n = counts.most_common(1)[0]
+        return (True, f"attack in the log ({n} failed logins from {ip})", "")
+    if container_up(ps, "lab-attacker"):
+        return (False, "",
+                "Attacker is running — its bursts come every ~10s. Re-check soon, or\n"
+                "watch:  grep '\"status\":401' logs/access.json | tail")
+    return (False, "", "Start the attacker with:  ./scripts/start_attacker.sh")
+
+
+def step_manual_block(events):
+    # A 403 that happened BEFORE the AI's first incident was caused by your rule.
+    cutoff = first_incident_ts()
+    manual = [e for e in events if e.get("status") == 403
+              and (cutoff is None or e.get("ts", "") < cutoff)]
+    rules = deny_rules()
+    if manual and (cutoff or not rules):
+        return (True, f"your rule blocked the attacker ({len(manual)} x 403), "
+                      "then you removed it", "")
+    if manual:
+        return (False, "",
+                f"Your rule works ({len(manual)} x 403)! Now DELETE it so the AI can\n"
+                "do the blocking later:  nano firewall/blocklist.conf")
+    if rules:
+        return (False, "",
+                "Rule written but no 403 yet. Wait for the next attack burst (~10s),\n"
+                "and check the reload:  docker logs lab-web | grep firewall")
+    return (False, "",
+            "Add a block rule for the attacker IP:\n"
+            "echo 'deny <attacker-ip>;' >> firewall/blocklist.conf")
+
+
+def step_batches():
+    files = glob.glob(os.path.join(BATCHES, "batch_*.jsonl"))
+    if files:
+        return (True, f"{len(files)} batch file(s) in batches/", "")
+    return (False, "",
+            "Run the batching script:  python3 broker/batch_logs.py\n"
+            "(Do the Step 6 reading and questions first.)")
+
+
+def step_ai(events):
+    incs = incident_files()
+    ips = deny_rules()
+    if not incs:
+        return (False, "",
+                "Run the Defensive AI:  python3 broker/soc_broker.py\n"
+                "The FIRST AI answer takes ~30s (the model is loading). Wait for it.")
+    if not ips:
+        return (False, "",
+                "The AI raised an incident but the rule is gone. Did you edit\n"
+                "firewall/blocklist.conf? Re-run the broker.")
+    cutoff = first_incident_ts() or ""
+    n = sum(1 for e in events if e.get("status") == 403
+            and e.get("src_ip") in ips and e.get("ts", "") >= cutoff)
+    if n:
+        return (True, f"AI blocked {', '.join(ips)}; attacker got {n} x 403", "")
+    return (False, "",
+            "The AI wrote the rule. Waiting for the attacker's next try to bounce\n"
+            "off with 403 — re-run this check in ~30s.")
 
 
 def main():
     events = read_log_events()
 
+    ps = docker_ps()
+
+    # (guide step number, title, result). Step 6 is reading + questions only,
+    # so there is nothing for this script to check there.
     steps = [
-        ("Lab environment is running",        step_containers()),
-        ("Web server is recording a log",     step_log(events)),
-        ("Normal traffic is flowing",         step_normal(events)),
-        ("Attack is hitting the admin login", step_attack(events)),
-        ("Defensive AI flagged the attack",   step_broker()),
-        ("Firewall rule was written",         step_firewall()),
-        ("Attacker is actually blocked",      step_enforced(events)),
+        (1, "Website is running",                     step_website(ps)),
+        (2, "Your own traffic is in the log",         step_my_traffic(events)),
+        (3, "Regular traffic is flowing",             step_visitors(ps, events)),
+        (4, "Attacker is hitting /admin/",            step_attacker(ps, events)),
+        (5, "You blocked it by hand, then unblocked", step_manual_block(events)),
+        (7, "Log split into batches",                 step_batches()),
+        (8, "Defensive AI blocked the attacker",      step_ai(events)),
     ]
 
     print()
@@ -203,35 +253,35 @@ def main():
 
     done_count = 0
     next_shown = False
-    for i, (title, (done, detail, hint)) in enumerate(steps, 1):
+    for i, title, (done, detail, hint) in steps:
         if done:
             done_count += 1
-            msg = f"  {GREEN('✓')} {i}. {title}"
+            msg = f"  {GREEN('✓')} Step {i}. {title}"
             if detail:
                 msg += DIM(f"  — {detail}")
             print(msg)
         elif not next_shown:
             next_shown = True
-            print(f"  {YELLOW('▶')} {i}. {title}  {YELLOW('← you are here')}")
+            print(f"  {YELLOW('▶')} Step {i}. {title}  {YELLOW('← you are here')}")
             for line in hint.splitlines():
                 print(f"       {line}")
         else:
-            print(f"  {DIM('·')} {DIM(f'{i}. {title}')}")
+            print(f"  {DIM('·')} {DIM(f'Step {i}. {title}')}")
 
     print("  " + "─" * 58)
     total = len(steps)
     if done_count == total:
-        print("  " + GREEN(f"All {total} steps complete! The automated defense worked. 🎉"))
+        print("  " + GREEN("Every step complete! The automated defense worked. 🎉"))
         print()
         print("  For your submission, screenshot your BROKER terminal showing:")
         print("    • the AI verdict line  [STATUS] ALERT")
         print("    • the  *** [AUTOMATED RESPONSE] blocked <ip> ***  banner")
-        print("  Then answer Q1-Q6 in the Student Guide.")
+        print("  Then finish the Step 8 reflection questions in the Student Guide.")
         print()
         print(DIM("  Done experimenting?  ./scripts/stop_lab.sh"))
     else:
         bar = GREEN("█" * done_count) + DIM("░" * (total - done_count))
-        print(f"  Progress: {bar}  {done_count}/{total}")
+        print(f"  Progress: {bar}  {done_count}/{total} checks")
         print(f"  Do the {YELLOW('▶')} step above, then run this check again.")
     print()
     return 0
