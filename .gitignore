@@ -2,6 +2,7 @@
 logs/*.json
 logs/*.log
 alerts/incident_*.json
+batches/batch_*
 firewall/blocklist.conf
 *.Zone.Identifier
 *:Zone.Identifier
