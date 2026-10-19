@@ -85,6 +85,7 @@ def follow(path):
                 continue
         except FileNotFoundError:
             pass
+        time.sleep(0.1)  # don't spin the CPU while the log is quiet
         yield None  # idle tick, lets the caller flush its window on time
 
 
