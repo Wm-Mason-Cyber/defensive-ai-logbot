@@ -227,8 +227,8 @@ def evaluate(cfg, use_ai, batch):
             print(f"[broker] AI judged {ip} SAFE; no block.", flush=True)
         elif len(events) >= cfg["decide_threshold"]:
             # AI unavailable or unparseable, but the volume is damning.
-            block(cfg, f"deterministic threshold "
-                       f"({len(events)} failed logins)", ip, summary)
+            block(cfg, ip, f"deterministic threshold "
+                           f"({len(events)} failed logins)", summary)
 
 
 def main():
